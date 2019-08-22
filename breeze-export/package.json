@@ -4,9 +4,20 @@
   "description": "breeze-export",
   "main": "app.js",
   "author": {
-    "name": ""
+    "name": "Derek Davenport"
+  },
+  "dependencies": {
+    "got": "^9.6.0",
+    "node-html-parser": "^1.1.16",
+    "tough-cookie": "^3.0.1",
+    "yargs": "^14.0.0"
   },
   "devDependencies": {
+    "@types/got": "^9.6.7",
     "@types/node": "^8.0.14"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
   }
 }
