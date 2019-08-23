@@ -10,6 +10,7 @@
     "got": "^9.6.0",
     "node-html-parser": "^1.1.16",
     "tough-cookie": "^3.0.1",
+    "vcards-js": "^2.10.0",
     "yargs": "^14.0.0"
   },
   "devDependencies": {

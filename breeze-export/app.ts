@@ -4,27 +4,7 @@ import { argv } from 'yargs';
 import * as got from 'got';
 import { CookieJar } from 'tough-cookie';
 import { parse, HTMLElement } from 'node-html-parser';
-
-// add missing got declarations
-declare module 'got' {
-	interface MyGotStreamFn extends GotStreamFn {
-		(url: GotUrl, options?: GotFormOptions<string | null>): GotEmitter & Duplex;
-		(url: GotUrl, options?: GotBodyOptions<string | null>): GotEmitter & Duplex;
-	}
-	interface GotFn<T extends string | null = string> {
-		(url: GotUrl): GotPromise<T extends string ? string : Buffer>;
-		(url: GotUrl, options: GotJSONOptions): GotPromise<any>;
-		(url: GotUrl, options: GotFormOptions<T>): GotPromise<T extends string ? string : Buffer>;
-		(url: GotUrl, options: GotBodyOptions<T>): GotPromise<T extends string ? string : Buffer>;
-	}
-	interface GotExtend {
-		(options: GotBodyOptions<null>): MyGotInstance<null>;
-	}
-
-	interface MyGotInstance<T extends string | null> extends GotFn<T>, Record<'get' | 'post' | 'put' | 'patch' | 'head' | 'delete', GotFn<T>> {
-		stream: MyGotStreamFn & Record<'get' | 'post' | 'put' | 'patch' | 'head' | 'delete', MyGotStreamFn>;
-	}
-}
+import * as vCardsJS from 'vcards-js';
 
 const { site, username, password } = argv;
 
@@ -36,13 +16,22 @@ if (!site || !username || !password) {
 const baseUrl = 'https://' + site;
 const cookieJar = new CookieJar();
 
-const gotOptions: got.GotBodyOptions<null> = {
+const gotOptions = {
 	// encoding: null, // default to buffer
 	// followRedirect: false,
 	baseUrl,
 	cookieJar,
 };
 const client = got.extend(gotOptions);
+const vcardKeys = {
+	'Mobile': 'cellPhone',
+	'Email': 'email',
+	'Gender': 'gender',
+};
+const vcardValues = {
+	'Male': 'M',
+	'Female': 'F',
+};
 
 main();
 
@@ -52,15 +41,42 @@ async function main() {
 	}
 	const people = await getPeople();
 	for (const person of people) {
+		const vcard = vCardsJS();
+		const nameComma = person.name.indexOf(',');
+		vcard.firstName = person.name.substring(nameComma + 2);
+		vcard.lastName = person.name.substring(0, nameComma);
+		vcard.organization = 'Kenwood'; // make arg?
 		const personResponse = await client(person.link);
-		const personBody = personResponse.body.toString();
-		const root = parse(personBody) as HTMLElement;
-		const personDetailsTable = root.querySelector('table.person_details');
-		const personDetails = personDetailsTable.querySelectorAll('tr').reduce((personDetails, row) => {
-			const cells = row.querySelectorAll('td');
-			personDetails[cells[0].text.trim()] = cells[1].text.trim();
-			return personDetails;
-		}, {});
+		const root = parse(personResponse.body) as HTMLElement;
+		const img = root.querySelector('img.profile');
+		const imgData = await client(img.attributes['src'], { encoding: null });
+		vcard.photo.embedFromString(imgData.body.toString('base64'), 'image/jpeg');
+		const tables = root.querySelectorAll('table.person_details');
+		for (const table of tables) {
+			for (const row of table.querySelectorAll('tr')) {
+				const [key, value] = row.querySelectorAll('td').map(cell => cell.structuredText);
+				if (key in vcardKeys) {
+					vcard[vcardKeys[key]] = value in vcardValues ? vcardValues[value] : value;
+				}
+				else if (key === 'Age') {
+					const date = row.querySelector('span.birthdate').structuredText;
+					vcard.birthday = new Date(date);
+				}
+				else if (key === 'Address') {
+					const [street, location] = value.split('\n');
+					const locationComma = location.indexOf(',');
+					const city = location.substring(0, locationComma);
+					const stateProvince = location.substr(locationComma + 2, 2);
+					const postalCode = location.substring(locationComma + 5);
+					vcard.homeAddress.label = 'Home Address';
+					vcard.homeAddress.street = street;
+					vcard.homeAddress.city = city;
+					vcard.homeAddress.stateProvince = stateProvince;
+					vcard.homeAddress.postalCode = postalCode;
+				}
+			}
+		}
+		console.log(vcard.getFormattedString());
 		break;
 	}
 	console.log('done');
