@@ -27,7 +27,6 @@ const gotOptions = {
     cookieJar,
 };
 const client = got.extend(gotOptions);
-main();
 const vcardKeys = {
     'Mobile': 'cellPhone',
     'Email': 'email',
@@ -37,6 +36,7 @@ const vcardValues = {
     'Male': 'M',
     'Female': 'F',
 };
+main();
 function main() {
     return __awaiter(this, void 0, void 0, function* () {
         if (!(yield login())) {
@@ -104,7 +104,7 @@ function getPeople() {
         const response = yield client('/people');
         const root = node_html_parser_1.parse(response.body);
         const peopleLinks = root.querySelectorAll('a.results_person_name');
-        return peopleLinks.map(a => ({ name: a.innerHTML, link: a.attributes['href'] }));
+        return peopleLinks.map(a => ({ name: a.structuredText, link: a.attributes['href'] }));
     });
 }
 //# sourceMappingURL=app.js.map

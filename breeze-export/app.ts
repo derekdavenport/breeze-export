@@ -99,5 +99,5 @@ async function getPeople() {
 	const response = await client('/people');
 	const root = parse(response.body) as HTMLElement;
 	const peopleLinks = root.querySelectorAll('a.results_person_name');
-	return peopleLinks.map(a => ({ name: a.innerHTML, link: a.attributes['href'] }));
+	return peopleLinks.map(a => ({ name: a.structuredText, link: a.attributes['href'] }));
 }
