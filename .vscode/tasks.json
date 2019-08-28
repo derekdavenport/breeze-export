@@ -6,7 +6,7 @@
 		{
 			"identifier": "npm: watch",
 			"type": "npm",
-			"script": "build",
+			"script": "watch",
 			"path": "breeze-export/",
 			"problemMatcher": [
 				"$tsc-watch"

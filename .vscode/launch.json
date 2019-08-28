@@ -10,7 +10,7 @@
 			"name": "Launch Program",
 			"program": "${workspaceFolder}\\breeze-export\\app.ts",
 			"args": [
-				"--site=kenwood.breezechms.com",
+				"--site=kenwood",
 				"--username=ddavenport",
 				"--password=${input:password}"
 			],

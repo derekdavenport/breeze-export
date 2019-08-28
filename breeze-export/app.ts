@@ -7,29 +7,38 @@ import { CookieJar } from 'tough-cookie';
 import { parse, HTMLElement } from 'node-html-parser';
 import * as vCardsJS from 'vcards-js';
 
+declare module 'got' {
+	interface GotBodyFn<T extends string | null> {
+		(url: GotUrl, options: GotFormOptions<T>): GotPromise<T extends null ? Buffer : string>;
+	}
+}
+
 type Person = {
 	name: string;
 	url: string;
 }
 
+const start = Date.now();
+
 const { site, username, password, maxFileSize } = argv;
-const maxFileBytes = (parseInt(maxFileSize) || 15) * 1024 * 1024;
+const maxFileBytes = (parseInt(maxFileSize, 10) || 15) * 1024 * 1024;
 
 if (!site || !username || !password) {
 	console.error('missing param');
 	throw new Error('missing param');
 }
 
-const baseUrl = 'https://' + site;
+const baseUrl = 'https://' + site + ".breezechms.com";
 const cookieJar = new CookieJar();
 
-const client = got.extend({
+const o = {
 	// encoding: null, // default to buffer
 	// followRedirect: false,
 	baseUrl,
 	cookieJar,
-});
+};
 
+const client = got.extend(o);
 
 main();
 
@@ -39,16 +48,12 @@ async function main() {
 	}
 	const people = await getPeople();
 	const vcardPromises: Promise<string>[] = [];
-	let i = 0;
 	for (const person of people) {
 		vcardPromises.push(makeVcard(person));
-		if (i++ > 1) {
-			break;
-		}
 	}
 	const vcards = await Promise.all(vcardPromises);
 	const filenames = await writeVcards(vcards);
-	console.log('wrote ' + filenames.join(', '));
+	console.log(`wrote ${filenames.join(', ')} in ${(Date.now() - start) / 1000} seconds`);
 }
 
 async function writeVcards(vcards: string[]) {
@@ -64,7 +69,7 @@ async function writeVcards(vcards: string[]) {
 					if (stream) {
 						stream.end();
 					}
-					const filename = `breeze-vcards-${filenames.length}.vcf`;
+					const filename = `${site}-${filenames.length}.vcf`;
 					filenames.push(filename);
 					stream = fs.createWriteStream(filename, { flags: 'w' });
 					writtenBytes = 0;
@@ -83,9 +88,8 @@ async function writeVcards(vcards: string[]) {
 	});
 }
 
-async function makeVcard({ name, url }) {
+async function makeVcard({ name, url }: Person) {
 	const vcard = vCardsJS();
-	vcard.organization = 'Kenwood'; // make arg?
 
 	// name
 	const nameComma = name.indexOf(',');
@@ -95,10 +99,14 @@ async function makeVcard({ name, url }) {
 	const personResponse = await client(url);
 	const root = parse(personResponse.body) as HTMLElement;
 
+	// org
+	const organization = root.querySelectorAll('.user_settings_dropdown_username_description_container div').pop().structuredText;
+	vcard.organization = organization; // make arg?
+
 	// image
 	const img = root.querySelector('img.profile');
-	if (img.attributes.src !== 'https://files.breezechms.com/img/profiles/generic/gray.png') {
-		const imgData = await client(img.attributes['src'], { encoding: null });
+	if (img.attributes.src.indexOf('/generic/') === -1) {
+		const imgData = await client(img.attributes.src, { encoding: null }) as unknown as got.Response<Buffer>;
 		vcard.photo.embedFromString(imgData.body.toString('base64'), 'image/jpeg');
 	}
 
@@ -121,15 +129,17 @@ async function makeVcard({ name, url }) {
 				break;
 			case 'Address': {
 				const [street, location] = valueCell.structuredText.split('\n');
-				const locationComma = location.indexOf(',');
-				const city = location.substring(0, locationComma);
-				const stateProvince = location.substr(locationComma + 2, 2);
-				const postalCode = location.substring(locationComma + 5);
-				vcard.homeAddress.label = 'Home Address';
-				vcard.homeAddress.street = street;
-				vcard.homeAddress.city = city;
-				vcard.homeAddress.stateProvince = stateProvince;
-				vcard.homeAddress.postalCode = postalCode;
+				if (location !== 'Sorry, we are unable to map this address.') {
+					const locationComma = location.indexOf(',');
+					const city = location.substring(0, locationComma);
+					const stateProvince = location.substr(locationComma + 2, 2);
+					const postalCode = location.substring(locationComma + 5);
+					vcard.homeAddress.label = 'Home Address';
+					vcard.homeAddress.street = street;
+					vcard.homeAddress.city = city;
+					vcard.homeAddress.stateProvince = stateProvince;
+					vcard.homeAddress.postalCode = postalCode;
+				}
 			}
 		}
 	}
@@ -146,12 +156,16 @@ async function login() {
 		password,
 	};
 	const response = await client.post('/ajax/login', { headers, form: true, body, throwHttpErrors: false });
-	return response.body === 'true';
+	return response.body.toString() === 'true';
 }
 
 async function getPeople(): Promise<Person[]> {
-	const response = await client('/people');
-	const root = parse(response.body) as HTMLElement;
+	// referer required or server thinks request is suspicious
+	const headers = {
+		referer: baseUrl + '/people',
+	};
+	const response = await client.post('/ajax/list_all_people', { headers });
+	const root = parse(response.body.toString()) as HTMLElement;
 	const peopleLinks = root.querySelectorAll('a.results_person_name');
-	return peopleLinks.map(a => ({ name: a.structuredText, url: a.attributes['href'] }));
+	return peopleLinks.map(a => ({ name: a.structuredText, url: a.attributes.href }));
 }
