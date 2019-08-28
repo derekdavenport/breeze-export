@@ -12,7 +12,8 @@
 			"args": [
 				"--site=kenwood",
 				"--username=ddavenport",
-				"--password=${input:password}"
+				"--password=${input:password}",
+				"--maxFileSize=15"
 			],
 			"sourceMaps": true,
 			"preLaunchTask": "npm: watch",

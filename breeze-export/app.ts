@@ -7,6 +7,7 @@ import { CookieJar } from 'tough-cookie';
 import { parse, HTMLElement } from 'node-html-parser';
 import * as vCardsJS from 'vcards-js';
 
+// fix got types
 declare module 'got' {
 	interface GotBodyFn<T extends string | null> {
 		(url: GotUrl, options: GotFormOptions<T>): GotPromise<T extends null ? Buffer : string>;
@@ -16,7 +17,7 @@ declare module 'got' {
 type Person = {
 	name: string;
 	url: string;
-}
+};
 
 const start = Date.now();
 
@@ -31,14 +32,10 @@ if (!site || !username || !password) {
 const baseUrl = 'https://' + site + ".breezechms.com";
 const cookieJar = new CookieJar();
 
-const o = {
-	// encoding: null, // default to buffer
-	// followRedirect: false,
+const client = got.extend({
 	baseUrl,
 	cookieJar,
-};
-
-const client = got.extend(o);
+});
 
 main();
 
