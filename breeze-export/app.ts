@@ -44,11 +44,7 @@ async function main() {
 		throw new Error('could not log in');
 	}
 	const people = await getPeople();
-	const vcardPromises: Promise<string>[] = [];
-	for (const person of people) {
-		vcardPromises.push(makeVcard(person));
-	}
-	const vcards = await Promise.all(vcardPromises);
+	const vcards = await Promise.all(people.map(person => makeVcard(person)));
 	const filenames = await writeVcards(vcards);
 	console.log(`wrote ${filenames.join(', ')} in ${(Date.now() - start) / 1000} seconds`);
 }
