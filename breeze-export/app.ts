@@ -30,11 +30,10 @@ if (!site || !username || !password) {
 }
 
 const baseUrl = 'https://' + site + ".breezechms.com";
-const cookieJar = new CookieJar();
 
 const client = got.extend({
 	baseUrl,
-	cookieJar,
+	cookieJar: new CookieJar(),
 });
 
 main();
@@ -55,7 +54,7 @@ async function writeVcards(vcards: string[]) {
 		let filenames: string[] = [];
 		let stream: fs.WriteStream;
 		let writtenBytes = 0;
-		const results = (function write() {
+		(function write() {
 			for (let ok = true; i < vcards.length && ok; i++) {
 				const vcardBuffer = Buffer.from(vcards[i]);
 				if (!stream || writtenBytes + vcardBuffer.byteLength > maxFileBytes) {
