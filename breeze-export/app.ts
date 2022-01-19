@@ -1,18 +1,9 @@
-﻿import { URL } from 'url';
-import { Duplex } from 'stream';
-import * as fs from 'fs';
-import { argv } from 'yargs';
-import * as got from 'got';
+﻿import * as fs from 'fs';
+import yargs from 'yargs';
+import got from 'got';
 import { CookieJar } from 'tough-cookie';
 import { parse, HTMLElement } from 'node-html-parser';
-import * as vCardsJS from 'vcards-js';
-
-// fix got types
-declare module 'got' {
-	interface GotBodyFn<T extends string | null> {
-		(url: GotUrl, options: GotFormOptions<T>): GotPromise<T extends null ? Buffer : string>;
-	}
-}
+import vCardsJS from 'vcards-js';
 
 type Person = {
 	name: string;
@@ -21,27 +12,27 @@ type Person = {
 
 const start = Date.now();
 
-const { site, username, password, maxFileSize } = argv;
-const maxFileBytes = (parseInt(maxFileSize, 10) || 15) * 1024 * 1024;
+const { site, username, password, maxFileSize } = yargs(process.argv.slice(2)).options({
+	site: { type: 'string', demandOption: true },
+	username: { type: 'string', default: '' },
+	password: { type: 'string', default: '' },
+	maxFileSize: { type: 'number', default: 15 },
+}).parseSync()
+const maxFileBytes = maxFileSize * 1024 * 1024;
 
-if (!site || !username || !password) {
-	console.error('missing param');
-	throw new Error('missing param');
-}
-
-const baseUrl = 'https://' + site + ".breezechms.com";
+const prefixUrl = 'https://' + site + ".breezechms.com";
 
 const client = got.extend({
-	baseUrl,
+	prefixUrl,
 	cookieJar: new CookieJar(),
 });
 
 main();
 
 async function main() {
-	if (!await login()) {
-		throw new Error('could not log in');
-	}
+	// if (!await login()) {
+	// 	throw new Error('could not log in');
+	// }
 	const people = await getPeople();
 	const vcards = await Promise.all(people.map(person => makeVcard(person)));
 	const filenames = await writeVcards(vcards);
@@ -52,15 +43,13 @@ async function writeVcards(vcards: string[]) {
 	return new Promise<string[]>(resolve => {
 		let i = 0;
 		let filenames: string[] = [];
-		let stream: fs.WriteStream;
+		let stream: fs.WriteStream = fs.createWriteStream(`${site}.vcf`, { flags: 'w' });;
 		let writtenBytes = 0;
 		(function write() {
 			for (let ok = true; i < vcards.length && ok; i++) {
 				const vcardBuffer = Buffer.from(vcards[i]);
-				if (!stream || writtenBytes + vcardBuffer.byteLength > maxFileBytes) {
-					if (stream) {
-						stream.end();
-					}
+				if (writtenBytes + vcardBuffer.byteLength > maxFileBytes) {
+					stream.end();
 					const filename = `${site}-${filenames.length}.vcf`;
 					filenames.push(filename);
 					stream = fs.createWriteStream(filename, { flags: 'w' });
@@ -89,16 +78,20 @@ async function makeVcard({ name, url }: Person) {
 	vcard.lastName = name.substring(0, nameComma);
 
 	const personResponse = await client(url);
-	const root = parse(personResponse.body) as HTMLElement;
+	const root = parse(personResponse.body);
 
-	// org
-	const organization = root.querySelectorAll('.user_settings_dropdown_username_description_container div').pop().structuredText;
-	vcard.organization = organization; // make arg?
+	const orgDiv = root.querySelectorAll('.user_settings_dropdown_username_description_container div').pop();
+	if (orgDiv) {
+		const organization = orgDiv.structuredText;
+		vcard.organization = organization; // make arg?
+	}
+
+
 
 	// image
 	const img = root.querySelector('img.profile');
-	if (img.attributes.src.indexOf('/generic/') === -1) {
-		const imgData = await client(img.attributes.src, { encoding: null }) as unknown as got.Response<Buffer>;
+	if (img && img.attributes.src.indexOf('/generic/') === -1) {
+		const imgData = await client(img.attributes.src, { responseType: 'buffer' });
 		vcard.photo.embedFromString(imgData.body.toString('base64'), 'image/jpeg');
 	}
 
@@ -113,11 +106,14 @@ async function makeVcard({ name, url }: Person) {
 				vcard.cellPhone = valueCell.structuredText;
 				break;
 			case 'Gender':
-				vcard.gender = valueCell.structuredText[0];
+				vcard.gender = valueCell.structuredText[0] === 'M' ? 'M' : 'F';
 				break;
 			case 'Age':
-				const date = valueCell.querySelector('span.birthdate').structuredText;
-				vcard.birthday = new Date(date);
+				const dateElm = valueCell.querySelector('span.birthdate');
+				if (dateElm) {
+					const date = dateElm.structuredText;
+					vcard.birthday = new Date(date);
+				}
 				break;
 			case 'Address': {
 				const [street, location] = valueCell.structuredText.split('\n');
@@ -141,22 +137,24 @@ async function makeVcard({ name, url }: Person) {
 async function login() {
 	// referer required or server thinks request is suspicious
 	const headers = {
-		referer: baseUrl + '/login',
+		referer: prefixUrl + '/login',
 	};
-	const body = {
-		username,
-		password,
-	};
-	const response = await client.post('/ajax/login', { headers, form: true, body, throwHttpErrors: false });
+	//const formData = new FormData()
+	// const body = {
+	// 	username,
+	// 	password,
+	// };
+	const body = `username=${username}&password=${password}`
+	const response = await client.post('ajax/login', { headers, body, throwHttpErrors: false });
 	return response.body.toString() === 'true';
 }
 
 async function getPeople(): Promise<Person[]> {
 	// referer required or server thinks request is suspicious
 	const headers = {
-		referer: baseUrl + '/people',
+		referer: prefixUrl + '/people',
 	};
-	const response = await client.post('/ajax/list_all_people', { headers });
+	const response = await client.post('ajax/list_all_people', { headers });
 	const root = parse(response.body.toString()) as HTMLElement;
 	const peopleLinks = root.querySelectorAll('a.results_person_name');
 	return peopleLinks.map(a => ({ name: a.structuredText, url: a.attributes.href }));

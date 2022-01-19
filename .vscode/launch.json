@@ -10,8 +10,8 @@
 			"name": "Launch Program",
 			"program": "${workspaceFolder}\\breeze-export\\app.ts",
 			"args": [
-				"--site=kenwood",
-				"--username=ddavenport",
+				"--site=antiochpeople",
+				"--username=test",
 				"--password=${input:password}",
 				"--maxFileSize=15"
 			],
